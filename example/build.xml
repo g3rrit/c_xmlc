@@ -1,0 +1,22 @@
+<build>
+
+    <target value="all">
+
+        <include value="lib"/>
+
+        <source value="main.c"/>
+        <source value="foo.c"/>
+
+        <flag link="m"/>
+        <flag output="a.out"/>
+        <flag include="src"/>
+
+    </target>
+
+    <target value="test">
+
+        <source value="main.c"/>
+
+    </target>
+
+</build>
