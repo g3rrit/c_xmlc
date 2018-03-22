@@ -249,7 +249,7 @@ void free_string_node(struct string_node *node)
         if(f_node)
             free(f_node);
     }
-    while(node->next);
+    while(node);
 }
 
 void compile_unit_delete(struct compile_unit *c_unit)
@@ -281,41 +281,10 @@ void compile_unit_print(struct compile_unit *c_unit)
 
 char *get_compile_str(struct compile_unit *c_unit)
 {
-    int c_str_len = strlen(c_unit->output + 4);     // -o .. 4
-
-    struct string_node *node = c_unit->include;
-    while(1)
-    {
-        c_str_len += strlen(node->val) + 3;         // -I..  3
-        if(node->next)
-            node = node->next;
-        else
-            break;
-    }
-    node = c_unit->link;
-    while(1)
-    {
-        c_str_len += strlen(node->val) + 3;         // -l.. 3
-        if(node->next)
-            node = node->next;
-        else
-            break;
-    }
-    node = c_unit->source;
-    while(1)
-    {
-        c_str_len += strlen(node->val) + 1;         // .. 1
-        if(node->next)
-            node = node->next;
-        else
-            break;
-    }
-
-
     char *res = 0;
-    res = malloc(c_str_len);
+    res = malloc(c_unit->size);
 
-    for(int i = 0; i < c_str_len; i++)
+    for(int i = 0; i < c_unit->size; i++)
         res[i] = 0;
 
     strcpy(res, "-o ");
@@ -325,6 +294,7 @@ char *get_compile_str(struct compile_unit *c_unit)
     *res = ' ';
     res++;
 
+    struct string_node *node;
     node = c_unit->include;
     while(1)
     {
@@ -340,6 +310,7 @@ char *get_compile_str(struct compile_unit *c_unit)
         else
             break;
     }
+    
     node = c_unit->link;
     while(1)
     {
@@ -369,6 +340,7 @@ char *get_compile_str(struct compile_unit *c_unit)
             break;
     }
 
+    res -= c_unit->size;
     return res;
 }
 
