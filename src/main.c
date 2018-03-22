@@ -60,7 +60,7 @@ int main(int argc, char *argv[])
     //invoke gcc
     char *compile_str = get_compile_str(&c_unit);
     printf("compile_str: %s\n", compile_str);
-    //system(compile_str);
+    system(compile_str);
     if(compile_str)
         free(compile_str);
 
@@ -111,10 +111,9 @@ void parse_file(struct compile_unit *c_unit, char *path)
     value = malloc(STR_S);
     int valpos = 0;
 
+    char curr_c = fgetc(file);
     while(!feof(file))
     {
-        char curr_c = fgetc(file);
-        
         yxml_ret_t r = yxml_parse(&xml, curr_c);
         if(r < 0)
         {
@@ -140,9 +139,10 @@ void parse_file(struct compile_unit *c_unit, char *path)
                 handle_yxml_output(c_unit, xml.attr, xml.elem, value);
                 break;
         }
+
+        curr_c = fgetc(file);
     }
     //parse xml
-    value = 1;
     
 cleanup:
     //if(xmldata)
@@ -282,13 +282,13 @@ void compile_unit_print(struct compile_unit *c_unit)
 char *get_compile_str(struct compile_unit *c_unit)
 {
     char *res = 0;
-    res = malloc(c_unit->size);
+    res = malloc(c_unit->size + 4);
 
-    for(int i = 0; i < c_unit->size; i++)
+    for(int i = 0; i < c_unit->size + 4; i++)
         res[i] = 0;
 
-    strcpy(res, "-o ");
-    res += 3;
+    strcpy(res, "gcc -o ");
+    res += 7;
     strcpy(res, c_unit->output);
     res += strlen(c_unit->output);
     *res = ' ';
@@ -340,8 +340,8 @@ char *get_compile_str(struct compile_unit *c_unit)
             break;
     }
 
-    res -= c_unit->size;
-    return res;
+    res -= c_unit->size + 4;
+    return res ;
 }
 
 // ----- COMPILE_UNIT -----
