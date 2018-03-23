@@ -5,14 +5,18 @@ tool for compiling c programs from .xml files
 build.xml
 ```xml
 <build>
-  <include value="lib"/>
+  <target value="all">
   
-  <source value="main.c"/>
-  <source value="foo.c"/>
+    <include value="lib"/>
   
-  <flag link="m"/>
-  <flag output="a.out"/>
-  <flag include="src"/>
+    <source value="main.c"/>
+    <source value="foo.c"/>
+  
+    <flag link="m"/>
+    <flag output="a.out"/>
+    <flag include="src"/>
+  
+  </target>
 </build>
 ```
 
