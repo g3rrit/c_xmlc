@@ -1,0 +1,7 @@
+<build>
+
+    <source value="bar.c"/>
+
+    <flag link="mlib"/>
+
+</build>

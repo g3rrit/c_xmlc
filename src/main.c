@@ -25,10 +25,13 @@ struct compile_unit
     struct string_node *link;
     char *output;
 
+    char *target;
+    char *current_target;
+
     int size;
 };
 
-void compile_unit_init(struct compile_unit *c_unit);
+void compile_unit_init(struct compile_unit *c_unit, char *target);
 
 void compile_unit_delete(struct compile_unit *c_unit);
 
@@ -50,20 +53,36 @@ int main(int argc, char *argv[])
 {
     printf("Starting XMLC\n");
 
+    char *target;
+    if(argc == 2)
+        target = argv[1];
+    else
+        target = "default";
+
+    printf("target: %s\n", target);
+
     struct compile_unit c_unit;
-    compile_unit_init(&c_unit);
+    compile_unit_init(&c_unit, target);
 
     parse_file(&c_unit, "build.xml");
 
     compile_unit_print(&c_unit);
 
+    if(!c_unit.source)
+    {
+        printf("!--no source files specified--!\n");
+        goto cleanup;
+    }
+
     //invoke gcc
     char *compile_str = get_compile_str(&c_unit);
     printf("compile_str: %s\n", compile_str);
     system(compile_str);
+
     if(compile_str)
         free(compile_str);
 
+cleanup:
     compile_unit_delete(&c_unit);
 
     return 0;
@@ -186,46 +205,65 @@ void handle_yxml_output(struct compile_unit *c_unit, char *attr, char *elem, cha
 {
     printf("found element: %s - attr: %s - value: %s\n", elem, attr, value);
 
-    if(strcmp(elem, "include") == 0)
+    if(!strcmp(elem, "target"))
     {
-        parse_file(c_unit, value);
+        if(c_unit->current_target)
+            free(c_unit->current_target);
+        c_unit->current_target = malloc(strlen(value) + 1);
+        strcpy(c_unit->current_target, value);
+        c_unit->current_target[strlen(value)] = 0;
     }
-    else if(strcmp(elem, "source") == 0)
-    {
-        string_node_append(&c_unit->source, value);
-        c_unit->size += strlen(value) + 1;
-    }
-    else if(strcmp(elem, "flag") == 0)
-    {
-        if(strcmp(attr, "link") == 0)
-        {
-            string_node_append(&c_unit->link, value);
-            c_unit->size += strlen(value) + 1 + 2;
-        }
-        else if(strcmp(attr, "include") == 0)
-        {
-            string_node_append(&c_unit->include, value);
-            c_unit->size += strlen(value) + 1 + 2;
-        }
-        else if(strcmp(attr, "output") == 0)
-        {
-            c_unit->size -= strlen(c_unit->output);
-            c_unit->size += strlen(value);
 
-            if(c_unit->output)
-                free(c_unit->output);
+    if(!strcmp(c_unit->current_target, "default") || !strcmp(c_unit->current_target, c_unit->target) || !strcmp(c_unit->target, "default"))
+    {
+        if(strcmp(elem, "include") == 0)
+        {
+            int count = 0;
+            for(; value[count]; count++);
+            strcpy(value + count, "/build.xml");            //not sure if working on windows
+            parse_file(c_unit, value);
+        }
+        else if(strcmp(elem, "source") == 0)
+        {
+            string_node_append(&c_unit->source, value);
+            c_unit->size += strlen(value) + 1;
+        }
+        else if(strcmp(elem, "flag") == 0)
+        {
+            if(strcmp(attr, "link") == 0)
+            {
+                string_node_append(&c_unit->link, value);
+                c_unit->size += strlen(value) + 1 + 2;
+            }
+            else if(strcmp(attr, "include") == 0)
+            {
+                string_node_append(&c_unit->include, value);
+                c_unit->size += strlen(value) + 1 + 2;
+            }
+            else if(strcmp(attr, "output") == 0)
+            {
+                c_unit->size -= strlen(c_unit->output);
+                c_unit->size += strlen(value);
 
-            c_unit->output = malloc(strlen(value) + 1);
-            strcpy(c_unit->output, value);
-            c_unit->output[strlen(value)] = 0;
+                if(c_unit->output)
+                    free(c_unit->output);
+
+                c_unit->output = malloc(strlen(value) + 1);
+                strcpy(c_unit->output, value);
+                c_unit->output[strlen(value)] = 0;
+            }
         }
     }
 }
 
 // ----- COMPILE_UNIT -----
 
-void compile_unit_init(struct compile_unit *c_unit)
+void compile_unit_init(struct compile_unit *c_unit, char *target)
 {
+    c_unit->target = target;
+    c_unit->current_target = malloc(8);
+    strcpy(c_unit->current_target, "default\0");
+
     c_unit->source = 0;
 
     c_unit->include = 0;
@@ -260,6 +298,8 @@ void compile_unit_delete(struct compile_unit *c_unit)
         free_string_node(c_unit->include);
     if(c_unit->link)
         free_string_node(c_unit->link);
+    if(c_unit->current_target)
+        free(c_unit->current_target);
 
     free(c_unit->output);
 }
@@ -364,6 +404,9 @@ void string_node_append(struct string_node **entry, char *data)
 
 void string_node_print(struct string_node *entry)
 {
+    if(!entry)
+        return;
+    
     while(1)
     {
         printf("--val: %s\n", entry->val);
