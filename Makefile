@@ -7,4 +7,4 @@ SRC_F := lib/yxml/yxml.c
 SRC_F += src/main.c
 
 all:
-	$(CC) -o build/xmlc.out $(INC_DIRS) $(SRC_F)
+	$(CC) -o build/xmlc $(INC_DIRS) $(SRC_F)

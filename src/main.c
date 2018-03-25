@@ -41,7 +41,7 @@ char *get_compile_str(struct compile_unit *c_unit);
 
 // ----- COMPILE_UNIT -----
 
-void parse_file(struct compile_unit *c_unit, char *path);
+void parse_file(struct compile_unit *c_unit, char *path, char *pre_str);
 
 void fill_str(char *str);
 
@@ -64,7 +64,7 @@ int main(int argc, char *argv[])
     struct compile_unit c_unit;
     compile_unit_init(&c_unit, target);
 
-    parse_file(&c_unit, "build.xml");
+    parse_file(&c_unit, "build.xml", 0);
 
     compile_unit_print(&c_unit);
 
@@ -88,8 +88,7 @@ cleanup:
     return 0;
 }
 
-
-void parse_file(struct compile_unit *c_unit, char *path)
+void parse_file(struct compile_unit *c_unit, char *path, char *pre_str)
 {
     //char *xmldata = 0;
 
@@ -155,6 +154,13 @@ void parse_file(struct compile_unit *c_unit, char *path)
                 break;
 
             case YXML_ATTREND:
+                if(pre_str)
+                {
+                    memcpy(value + strlen(pre_str) + 1, value, strlen(value));
+                    value[strlen(pre_str)] = '/';
+                    memcpy(value, pre_str, strlen(pre_str));
+                }
+
                 handle_yxml_output(c_unit, xml.attr, xml.elem, value);
                 break;
         }
@@ -218,10 +224,18 @@ void handle_yxml_output(struct compile_unit *c_unit, char *attr, char *elem, cha
     {
         if(strcmp(elem, "include") == 0)
         {
+            char *new_dir = malloc(strlen(value));
+            strcpy(new_dir, value);
+
+            string_node_append(&c_unit->include, value);
+            c_unit->size += strlen(value) + 1 + 2;
+
             int count = 0;
             for(; value[count]; count++);
             strcpy(value + count, "/build.xml");            //not sure if working on windows
-            parse_file(c_unit, value);
+            parse_file(c_unit, value, new_dir);
+
+            free(new_dir);
         }
         else if(strcmp(elem, "source") == 0)
         {
@@ -336,48 +350,58 @@ char *get_compile_str(struct compile_unit *c_unit)
 
     struct string_node *node;
     node = c_unit->include;
-    while(1)
+    if(node)
     {
-        strcpy(res, "-I");
-        res += 2;
-        strcpy(res, node->val);
-        res += strlen(node->val);
-        *res = ' ';
-        res++;
+        while(1)
+        {
+            strcpy(res, "-I");
+            res += 2;
+            strcpy(res, node->val);
+            res += strlen(node->val);
+            *res = ' ';
+            res++;
 
-        if(node->next)
-            node = node->next;
-        else
-            break;
+            if(node->next)
+                node = node->next;
+            else
+                break;
+        }
     }
     
     node = c_unit->link;
-    while(1)
+    if(node)
     {
-        strcpy(res, "-l");
-        res += 2;
-        strcpy(res, node->val);
-        res += strlen(node->val);
-        *res = ' ';
-        res++;
+        while(1)
+        {
+            strcpy(res, "-l");
+            res += 2;
+            strcpy(res, node->val);
+            res += strlen(node->val);
+            *res = ' ';
+            res++;
 
-        if(node->next)
-            node = node->next;
-        else
-            break;
+            if(node->next)
+                node = node->next;
+            else
+                break;
+        }
     }
-    node = c_unit->source;
-    while(1)
-    {
-        strcpy(res, node->val);
-        res += strlen(node->val);
-        *res = ' ';
-        res++;
 
-        if(node->next)
-            node = node->next;
-        else
-            break;
+    node = c_unit->source;
+    if(node)
+    {
+        while(1)
+        {
+            strcpy(res, node->val);
+            res += strlen(node->val);
+            *res = ' ';
+            res++;
+
+            if(node->next)
+                node = node->next;
+            else
+                break;
+        }
     }
 
     res -= c_unit->size + 4;
