@@ -374,11 +374,13 @@ char *get_compile_str(struct compile_unit *c_unit)
 
     struct string_node *node;
 
-    node = c_unit->other;
+    node = c_unit->include;
     if(node)
     {
         while(1)
         {
+            strcpy(res, "-I");
+            res += 2;
             strcpy(res, node->val);
             res += strlen(node->val);
             *res = ' ';
@@ -391,13 +393,11 @@ char *get_compile_str(struct compile_unit *c_unit)
         }
     }
 
-    node = c_unit->include;
+    node = c_unit->other;
     if(node)
     {
         while(1)
         {
-            strcpy(res, "-I");
-            res += 2;
             strcpy(res, node->val);
             res += strlen(node->val);
             *res = ' ';
@@ -465,10 +465,10 @@ char *get_compile_str(struct compile_unit *c_unit)
         }
     }
 
-
+    *res = 0;
 
     res -= c_unit->size + 4;
-    return res ;
+    return res;
 }
 
 // ----- COMPILE_UNIT -----
