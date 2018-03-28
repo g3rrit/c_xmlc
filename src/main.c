@@ -23,6 +23,7 @@ struct compile_unit
     struct string_node *source;    
     struct string_node *include;
     struct string_node *link;
+    struct string_node *link_dir;
     char *output;
 
     char *target;
@@ -249,6 +250,11 @@ void handle_yxml_output(struct compile_unit *c_unit, char *attr, char *elem, cha
                 string_node_append(&c_unit->link, value);
                 c_unit->size += strlen(value) + 1 + 2;
             }
+            else if(strcmp(attr, "linkdir") == 0)
+            {
+                string_node_append(&c_unit->link_dir, value);
+                c_unit->size += strlen(value) + 1 + 2;
+            }
             else if(strcmp(attr, "include") == 0)
             {
                 string_node_append(&c_unit->include, value);
@@ -279,6 +285,8 @@ void compile_unit_init(struct compile_unit *c_unit, char *target)
     strcpy(c_unit->current_target, "default\0");
 
     c_unit->source = 0;
+
+    c_unit->link_dir = 0;
 
     c_unit->include = 0;
 
@@ -314,6 +322,8 @@ void compile_unit_delete(struct compile_unit *c_unit)
         free_string_node(c_unit->link);
     if(c_unit->current_target)
         free(c_unit->current_target);
+    if(c_unit->link_dir)
+        free(c_unit->link_dir);
 
     free(c_unit->output);
 }
@@ -327,6 +337,8 @@ void compile_unit_print(struct compile_unit *c_unit)
     string_node_print(c_unit->source);
     printf("include dirs:\n");
     string_node_print(c_unit->include);
+    printf("link dirs:\n");
+    string_node_print(c_unit->link_dir);
     printf("link with:\n");
     string_node_print(c_unit->link);
 
@@ -367,7 +379,43 @@ char *get_compile_str(struct compile_unit *c_unit)
                 break;
         }
     }
-    
+
+    node = c_unit->source;
+    if(node)
+    {
+        while(1)
+        {
+            strcpy(res, node->val);
+            res += strlen(node->val);
+            *res = ' ';
+            res++;
+
+            if(node->next)
+                node = node->next;
+            else
+                break;
+        }
+    }
+
+    node = c_unit->link_dir;
+    if(node)
+    {
+        while(1)
+        {
+            strcpy(res, "-L");
+            res += 2;
+            strcpy(res, node->val);
+            res += strlen(node->val);
+            *res = ' ';
+            res++;
+
+            if(node->next)
+                node = node->next;
+            else
+                break;
+        }
+    }
+   
     node = c_unit->link;
     if(node)
     {
@@ -387,22 +435,7 @@ char *get_compile_str(struct compile_unit *c_unit)
         }
     }
 
-    node = c_unit->source;
-    if(node)
-    {
-        while(1)
-        {
-            strcpy(res, node->val);
-            res += strlen(node->val);
-            *res = ' ';
-            res++;
 
-            if(node->next)
-                node = node->next;
-            else
-                break;
-        }
-    }
 
     res -= c_unit->size + 4;
     return res ;
