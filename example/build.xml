@@ -11,6 +11,8 @@
         <flag output="a.out"/>
         <flag include="src"/>
 
+        <flag other="-w"/>
+
     </target>
 
     <target value="test">

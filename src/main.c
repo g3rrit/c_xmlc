@@ -24,6 +24,7 @@ struct compile_unit
     struct string_node *include;
     struct string_node *link;
     struct string_node *link_dir;
+    struct string_node *other;
     char *output;
 
     char *target;
@@ -272,6 +273,11 @@ void handle_yxml_output(struct compile_unit *c_unit, char *attr, char *elem, cha
                 strcpy(c_unit->output, value);
                 c_unit->output[strlen(value)] = 0;
             }
+            else if(strcmp(attr, "other") == 0)
+            {
+                string_node_append(&c_unit->other, value);
+                c_unit->size += strlen(value) + 1;
+            }
         }
     }
 }
@@ -291,6 +297,8 @@ void compile_unit_init(struct compile_unit *c_unit, char *target)
     c_unit->include = 0;
 
     c_unit->link = 0;
+
+    c_unit->other = 0;
 
     c_unit->output = malloc(6);
     strcpy(c_unit->output, "a.out");
@@ -324,6 +332,8 @@ void compile_unit_delete(struct compile_unit *c_unit)
         free(c_unit->current_target);
     if(c_unit->link_dir)
         free(c_unit->link_dir);
+    if(c_unit->other)
+        free(c_unit->other);
 
     free(c_unit->output);
 }
@@ -341,6 +351,8 @@ void compile_unit_print(struct compile_unit *c_unit)
     string_node_print(c_unit->link_dir);
     printf("link with:\n");
     string_node_print(c_unit->link);
+    printf("other flags:\n");
+    string_node_print(c_unit->other);
 
     printf("output: %s\n", c_unit->output);
 }
@@ -361,6 +373,24 @@ char *get_compile_str(struct compile_unit *c_unit)
     res++;
 
     struct string_node *node;
+
+    node = c_unit->other;
+    if(node)
+    {
+        while(1)
+        {
+            strcpy(res, node->val);
+            res += strlen(node->val);
+            *res = ' ';
+            res++;
+
+            if(node->next)
+                node = node->next;
+            else
+                break;
+        }
+    }
+
     node = c_unit->include;
     if(node)
     {
