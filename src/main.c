@@ -7,6 +7,33 @@
 #define BUFSIZE 8192
 #define STR_S 256
 
+// ----- ATTRIBUTE -----
+
+#define MAX_ATTRIBUTES 10
+
+struct attribute
+{
+    char *elem;
+    char *attr[MAX_ATTRIBUTES];
+    char *value[MAX_ATTRIBUTES];
+    int att_size;
+
+    char *data;
+};
+
+void attribute_init(struct attribute *this);
+
+void attribute_elem(struct attribute *this, char *elem);
+
+void attribute_add(struct attribute *this, char *attr, char *value);
+
+void attribute_data(struct attribute *this, char *data);
+
+void attribute_delete(struct attribute *this);
+
+
+// ----- ATTRIBUTE -----
+
 struct string_node
 {
     char *val;
@@ -112,6 +139,12 @@ void parse_file(struct compile_unit *c_unit, char *path, char *pre_str)
     int valpos = 0;
 
     char curr_c = fgetc(file);
+
+    struct attribute attr;
+    attribute_init(&attr);
+
+    char data_buffer[1024];
+
     while(!feof(file))
     {
         yxml_ret_t r = yxml_parse(&xml, curr_c);
@@ -142,13 +175,44 @@ void parse_file(struct compile_unit *c_unit, char *path, char *pre_str)
                     value[strlen(pre_str)] = '/';
                     memcpy(value, pre_str, strlen(pre_str));
                 }
+                printf("pi is: %s\n", xml.pi);
+
+                /*for(int i = 0; i < 20; i++)
+                    printf("nextc: %c\n", fgetc(file));
+                    */
 
                 handle_yxml_output(c_unit, xml.attr, xml.elem, value);
                 break;
         }
 
+        //-----
+        int seek_size = 1;
+        for(char ch = fgetc(file); ch == ' '; ch = fgetc(file))
+                seek_size++;
+
+        if(ch == '>')
+        {
+            //handle attribute
+            memset(data_buffer, 0, 1024);
+            for(int i = 0; i < 1024; i++)
+            {
+                ch = fgetc(file);
+                seek_size++;
+                if(ch == '<')
+                    break;
+
+                data_buffer[i] = ch;
+            }
+             
+
+        }
+
+        fseek(file, -seek_size, SEEK_CUR);
+        //-----
+
         curr_c = fgetc(file);
     }
+    printf("end of file\n");
     //parse xml
     
 cleanup:
@@ -194,6 +258,72 @@ void handle_yxml_output(struct compile_unit *c_unit, char *attr, char *elem, cha
     printf("found element: %s - attr: %s - value: %s\n", elem, attr, value);
 
 }
+
+
+// ----- ATTRIBUTE -----
+
+void attribute_init(struct attribute *this)
+{
+    this->elem = 0;
+    for(int i = 0; i < MAX_ATTRIBUTES; i++)
+        this->attr[i] = 0;
+    for(int i = 0; i < MAX_ATTRIBUTES; i++)
+        this->value[i] = 0;
+
+    this->att_size = 0;
+
+    this->data = 0;
+}
+
+void attribute_elem(struct attribute *this, char *elem)
+{
+    if(this->elem)
+        free(this->elem);
+
+    this->elem = malloc(strlen(elem) + 1);
+    strcpy(this->elem, elem);
+    this->elem[strlen(elem)] = 0;
+}
+
+void attribute_add(struct attribute *this, char *attr, char *value)
+{
+    this->attr[this->att_size] = malloc(strlen(attr) + 1);
+    strcpy(this->attr[this->att_size], attr);
+    this->attr[this->att_size][strlen(attr)] = 0;
+
+    this->value[this->att_size] = malloc(strlen(value) + 1);
+    strcpy(this->value[this->att_size], value);
+    this->value[this->att_size][strlen(value)] = 0;
+
+    this->att_size++;
+}
+
+void attribute_data(struct attribute *this, char *data)
+{
+    this->data = malloc(strlen(data));
+    strcpy(this->data, data);
+    this->data[strlen(data)] = 0;
+}
+
+void attribute_delete(struct attribute *this)
+{
+    for(int i = 0; i < this->attr_size; i++)
+        if(this->attr[i])
+            free(this->attr[i]);
+
+    for(int i = 0; i < this->attr_size; i++)
+        if(this->value[i])
+            free(this->value[i]);
+
+    if(this->elem)
+        free(this->elem);
+
+    if(this->data)
+        free(this->data);
+}
+
+// ----- ATTRIBUTE -----
+
 
 // ----- COMPILE_UNIT -----
 
@@ -280,6 +410,8 @@ char *get_compile_str(struct compile_unit *c_unit)
     res -= c_unit->size + 4;
     return res;
 }
+
+
 
 // ----- COMPILE_UNIT -----
 
