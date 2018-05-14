@@ -20,11 +20,15 @@ void string_node_print(struct string_node *entry);
 // ----- COMPILE_UNIT -----
 struct compile_unit
 {
-    struct string_node *option;
-
-    char *compiler;
+    struct string_node *source;    
+    struct string_node *include;
+    struct string_node *link;
+    struct string_node *link_dir;
+    struct string_node *other;
+    char *output;
 
     char *target;
+    char *current_target;
 
     int size;
 };
@@ -66,9 +70,9 @@ int main(int argc, char *argv[])
 
     compile_unit_print(&c_unit);
 
-    if(!c_unit.option)
+    if(!c_unit.source)
     {
-        printf("!--no options files specified--!\n");
+        printf("!--no source files specified--!\n");
         goto cleanup;
     }
 
@@ -100,6 +104,22 @@ void parse_file(struct compile_unit *c_unit, char *path, char *pre_str)
         printf("error reading file: %s\n", path); 
         goto cleanup;
     }
+
+    /*
+    fseek(file, 0L, SEEK_END);
+    long lsize = ftell(file);
+    rewind(fp);
+
+    xmldata = malloc(lsize + 1);
+
+    if(fread(xmldata, lsize, 1, file) != 1)
+    {
+        printf("error copying file to memory\n");
+        goto cleanup;
+    }
+    fclose(file);
+    file = 0;
+    */
 
     printf("parsing file: %s\n", path);
 
@@ -193,6 +213,73 @@ void handle_yxml_output(struct compile_unit *c_unit, char *attr, char *elem, cha
 {
     printf("found element: %s - attr: %s - value: %s\n", elem, attr, value);
 
+    if(!strcmp(elem, "target"))
+    {
+        if(c_unit->current_target)
+            free(c_unit->current_target);
+        c_unit->current_target = malloc(strlen(value) + 1);
+        strcpy(c_unit->current_target, value);
+        c_unit->current_target[strlen(value)] = 0;
+    }
+
+    if(!strcmp(c_unit->current_target, "default") || !strcmp(c_unit->current_target, c_unit->target) || !strcmp(c_unit->target, "default"))
+    {
+        if(strcmp(elem, "include") == 0)
+        {
+            char *new_dir = malloc(strlen(value));
+            strcpy(new_dir, value);
+
+            string_node_append(&c_unit->include, value);
+            c_unit->size += strlen(value) + 1 + 2;
+
+            int count = 0;
+            for(; value[count]; count++);
+            strcpy(value + count, "/build.xml");            //not sure if working on windows
+            parse_file(c_unit, value, new_dir);
+
+            free(new_dir);
+        }
+        else if(strcmp(elem, "source") == 0)
+        {
+            string_node_append(&c_unit->source, value);
+            c_unit->size += strlen(value) + 1;
+        }
+        else if(strcmp(elem, "flag") == 0)
+        {
+            if(strcmp(attr, "link") == 0)
+            {
+                string_node_append(&c_unit->link, value);
+                c_unit->size += strlen(value) + 1 + 2;
+            }
+            else if(strcmp(attr, "linkdir") == 0)
+            {
+                string_node_append(&c_unit->link_dir, value);
+                c_unit->size += strlen(value) + 1 + 2;
+            }
+            else if(strcmp(attr, "include") == 0)
+            {
+                string_node_append(&c_unit->include, value);
+                c_unit->size += strlen(value) + 1 + 2;
+            }
+            else if(strcmp(attr, "output") == 0)
+            {
+                c_unit->size -= strlen(c_unit->output);
+                c_unit->size += strlen(value);
+
+                if(c_unit->output)
+                    free(c_unit->output);
+
+                c_unit->output = malloc(strlen(value) + 1);
+                strcpy(c_unit->output, value);
+                c_unit->output[strlen(value)] = 0;
+            }
+            else if(strcmp(attr, "other") == 0)
+            {
+                string_node_append(&c_unit->other, value);
+                c_unit->size += strlen(value) + 1;
+            }
+        }
+    }
 }
 
 // ----- COMPILE_UNIT -----
@@ -200,12 +287,23 @@ void handle_yxml_output(struct compile_unit *c_unit, char *attr, char *elem, cha
 void compile_unit_init(struct compile_unit *c_unit, char *target)
 {
     c_unit->target = target;
+    c_unit->current_target = malloc(8);
+    strcpy(c_unit->current_target, "default\0");
 
-    c_unit->option = 0;
+    c_unit->source = 0;
 
-    c_unit->compiler = 0;
+    c_unit->link_dir = 0;
 
-    c_unit->size = 4;
+    c_unit->include = 0;
+
+    c_unit->link = 0;
+
+    c_unit->other = 0;
+
+    c_unit->output = malloc(6);
+    strcpy(c_unit->output, "a.out");
+    c_unit->output[5] = 0;
+    c_unit->size = strlen(c_unit->output) + 4;
 }
 
 void free_string_node(struct string_node *node)
@@ -224,8 +322,20 @@ void free_string_node(struct string_node *node)
 
 void compile_unit_delete(struct compile_unit *c_unit)
 {
-    if(c_unit->option)
-        free_string_node(c_unit->option);
+    if(c_unit->source)
+        free_string_node(c_unit->source);
+    if(c_unit->include)
+        free_string_node(c_unit->include);
+    if(c_unit->link)
+        free_string_node(c_unit->link);
+    if(c_unit->current_target)
+        free(c_unit->current_target);
+    if(c_unit->link_dir)
+        free(c_unit->link_dir);
+    if(c_unit->other)
+        free(c_unit->other);
+
+    free(c_unit->output);
 }
 
 void compile_unit_print(struct compile_unit *c_unit)
@@ -233,8 +343,18 @@ void compile_unit_print(struct compile_unit *c_unit)
     printf("printing compile_unit:\n");
     printf("size: %i\n", c_unit->size);
 
-    printf("options files:\n");
-    string_node_print(c_unit->option);
+    printf("source files:\n");
+    string_node_print(c_unit->source);
+    printf("include dirs:\n");
+    string_node_print(c_unit->include);
+    printf("link dirs:\n");
+    string_node_print(c_unit->link_dir);
+    printf("link with:\n");
+    string_node_print(c_unit->link);
+    printf("other flags:\n");
+    string_node_print(c_unit->other);
+
+    printf("output: %s\n", c_unit->output);
 }
 
 char *get_compile_str(struct compile_unit *c_unit)
@@ -245,24 +365,94 @@ char *get_compile_str(struct compile_unit *c_unit)
     for(int i = 0; i < c_unit->size + 4; i++)
         res[i] = 0;
 
-    if(!c_unit->compiler)
-    {
-        strcpy(res, "gcc -o ");
-        res += 7;
-    }
-    else
-    {
-        strcpy(res, c_unit->compiler);
-        res += strlen(c_unit->compiler) + 1;
-    }
+    strcpy(res, "gcc -o ");
+    res += 7;
+    strcpy(res, c_unit->output);
+    res += strlen(c_unit->output);
+    *res = ' ';
+    res++;
 
     struct string_node *node;
 
-    node = c_unit->option;
+    node = c_unit->include;
     if(node)
     {
         while(1)
         {
+            strcpy(res, "-I");
+            res += 2;
+            strcpy(res, node->val);
+            res += strlen(node->val);
+            *res = ' ';
+            res++;
+
+            if(node->next)
+                node = node->next;
+            else
+                break;
+        }
+    }
+
+    node = c_unit->other;
+    if(node)
+    {
+        while(1)
+        {
+            strcpy(res, node->val);
+            res += strlen(node->val);
+            *res = ' ';
+            res++;
+
+            if(node->next)
+                node = node->next;
+            else
+                break;
+        }
+    }
+
+    node = c_unit->source;
+    if(node)
+    {
+        while(1)
+        {
+            strcpy(res, node->val);
+            res += strlen(node->val);
+            *res = ' ';
+            res++;
+
+            if(node->next)
+                node = node->next;
+            else
+                break;
+        }
+    }
+
+    node = c_unit->link_dir;
+    if(node)
+    {
+        while(1)
+        {
+            strcpy(res, "-L");
+            res += 2;
+            strcpy(res, node->val);
+            res += strlen(node->val);
+            *res = ' ';
+            res++;
+
+            if(node->next)
+                node = node->next;
+            else
+                break;
+        }
+    }
+   
+    node = c_unit->link;
+    if(node)
+    {
+        while(1)
+        {
+            strcpy(res, "-l");
+            res += 2;
             strcpy(res, node->val);
             res += strlen(node->val);
             *res = ' ';
