@@ -7,6 +7,8 @@
 #define BUFSIZE 8192
 #define STR_S 256
 
+#define MAX_ATTRIBS 5
+
 struct string_node
 {
     char *val;
@@ -19,23 +21,93 @@ void string_node_print(struct string_node *entry);
 
 // ----- XML NODE ------
 
+struct attrib_node
+{
+    char *name;
+    char *value;
+};
+
 struct xml_node
 {
-    XMLNode *node;
+    char *tag;
     char *text;
+    
+    struct attrib_node attributes[MAX_ATTRIBS];
+    int att_count;
 };
+
+void xml_node_init(struct xml_node *this, char *tag)
+{
+    if(tag)
+    {
+        int len = strlen(tag);
+        this->tag = malloc(len + 1);
+        strcpy(this->tag, tag);
+        this->tag[len] = 0;
+    }
+    else
+    {
+        this->tag = 0;
+    }
+
+    this->att_count = 0;
+}
+
+void xml_node_text(struct xml_node *this, char *text)
+{
+    int len = strlen(text);
+    this->text = malloc(len + 1);
+    strcpy(this->text, text);
+    this->text[len] = 0;
+}
+
+void xml_node_add(struct xml_node *this, char *name, char *value)
+{
+    struct attrib_node *temp = &this->attributes[this->att_count];
+
+    int n_len = strlen(name);
+    int v_len = strlen(value);
+    temp->name = malloc(n_len + 1);
+    strcpy(temp->name, name);
+    temp->name[n_len] = 0;
+
+    temp->value = malloc(v_len + 1);
+    strcpy(temp->value, value);
+    temp->value[v_len] = 0;
+
+    this->att_count++;
+}
+
+void xml_node_delete(struct xml_node *this)
+{
+    struct attrib_node *temp;
+    for(int i = 0; i < this->att_count; i++)
+    {
+        temp = &this->attributes[i];
+        free(temp->name);
+        free(temp->value);
+    }
+
+    if(this->tag)
+        free(this->tag);
+    if(this->tag)
+        free(this->text);
+
+    this->att_count = 0;
+}
+
 
 void print_xml_node(struct xml_node *node)
 {
-    printf("node ->\ntag: %s\n", node->node->tag);
+    printf("node ->\ntag: %s\n", node->tag);
 
     printf("text: %s\n", node->text);
 
-    printf("%i attributes\n", node->node->n_attributes);
+    printf("%i attributes\n", node->att_count);
 
-    for(int i = 0; i < node->node->n_attributes; i++)
+    for(int i = 0; i < node->att_count; i++)
     {
-        printf("att[%i] name: %s value: %s\n", i, node->node->attributes[i].name, node->node->attributes[i].value);
+        printf("att[%i] name: %s value: %s\n", i, node->attributes[i].name, node->attributes[i].value);
     }
 }
 // ----- XML NODE ------
@@ -46,14 +118,15 @@ struct compile_unit
     struct string_node *option;
 
     char *compiler;
-    char *target;
     int size;
 
     //the active text inside a node
     struct xml_node *active_node;
+
+    char *pre_str;
 };
 
-void compile_unit_init(struct compile_unit *c_unit, char *target);
+void compile_unit_init(struct compile_unit *c_unit);
 
 void compile_unit_delete(struct compile_unit *c_unit);
 
@@ -63,7 +136,7 @@ char *get_compile_str(struct compile_unit *c_unit);
 
 // ----- COMPILE_UNIT -----
 
-void parse_file(struct compile_unit *c_unit, char *path, char *pre_str);
+void parse_file(struct compile_unit *c_unit, char *path);
 
 void fill_str(char *str);
 
@@ -71,18 +144,10 @@ int main(int argc, char *argv[])
 {
     printf("Starting XMLC\n");
 
-    char *target;
-    if(argc == 2)
-        target = argv[1];
-    else
-        target = "default";
-
-    printf("target: %s\n", target);
-
     struct compile_unit c_unit;
-    compile_unit_init(&c_unit, target);
+    compile_unit_init(&c_unit);
 
-    parse_file(&c_unit, "build.xml", 0);
+    parse_file(&c_unit, "build.xml");
 
     compile_unit_print(&c_unit);
 
@@ -110,52 +175,150 @@ cleanup:
 
 int start_doc(SAX_Data *sd)
 {
-    printf("starting doc\n");
     return 1;
 }
 
 int start_node(const XMLNode *node, SAX_Data *sd)
 {
-    printf("starting nodes\n");
-
     struct compile_unit *c_unit = sd->user;
+
+    if(!strcmp(node->tag, "build"))
+    {
+        if(node->n_attributes < 1)
+        {
+            if(c_unit->compiler)
+                return 1;
+            printf("no compiler selected\n");
+            return 0;
+        }
+
+        c_unit->compiler = malloc(strlen(node->attributes[0].value));
+        strcpy(c_unit->compiler, node->attributes[0].value);
+
+        c_unit->size += strlen(node->attributes[0].value);
+
+        printf("compiler selected: %s\n", c_unit->compiler);
+            
+        return 1;
+    }
     
-    c_unit->active_node->node = node;
+    xml_node_delete(c_unit->active_node);
+    xml_node_init(c_unit->active_node, node->tag);
+
+    for(int i = 0; i < node->n_attributes; i++)
+        xml_node_add(c_unit->active_node, node->attributes[i].name, node->attributes[i].value);
 
     return 1;
 }
 
 int end_node(const XMLNode* node, SAX_Data* sd)
 {
-    printf("end node\n");
-
     struct compile_unit *c_unit = sd->user;
 
-    print_xml_node(c_unit->active_node);
+#define c_node c_unit->active_node
 
+    if(!strcmp(node->tag, "include"))
+    {
+        char *b_path = c_node->text;
+        for(; *b_path == ' '; b_path++);
+        char *e_path = b_path;
+        for(; *e_path != ' '; e_path++);
+        *e_path = 0;
+        parse_file(c_unit, b_path);
+        return 1;
+    }
+    else if(strcmp(node->tag, "option"))
+        return 1;
+
+
+    //handle node
+    char *prefix = 0;
+    int include = 0;
+
+    char *data = malloc(1);
+
+    for(int i = 0; i < c_node->att_count; i++)
+    {
+        //could check for value aswell
+        if(!strcmp(c_node->attributes[i].name, "include"))
+            include = 1;
+        else if(!strcmp(c_node->attributes[i].name, "prefix"))
+            prefix = c_node->attributes[i].value;
+    }
+
+    //replace newline with space
+    for(char *c = c_node->text; *c != 0; c++)
+        if(*c == '\n')
+            *c = ' ';
+        else if(*c == '\t')
+            *c = ' ';
+
+
+    int p_len = 0;
+    if(prefix)
+        p_len = strlen(prefix);
+
+    int d_pos = 0;
+    int t_pos = 0;
+
+    char *curr_c = 1;
+    char *next_c = 0;
+    curr_c = c_node->text;
+    while(1)
+    {
+        for(; *curr_c == ' '; curr_c++)
+            if(*curr_c == 0)
+                goto append;
+
+        for(next_c = curr_c; *next_c != ' '; next_c++)
+            if(*next_c == 0)
+                goto append;
+
+        int s_len = next_c - curr_c;
+
+        data = realloc(data, next_c - curr_c + p_len + 3);
+
+        data[d_pos] = ' ';
+        d_pos++;
+        if(prefix)
+            memcpy(data + d_pos, prefix, p_len);
+
+        d_pos += p_len; 
+
+        memcpy(data + d_pos, curr_c, s_len);
+        d_pos += s_len;
+
+        curr_c += s_len;
+
+    }
+append:
+    data[d_pos] = 0;
+
+    c_unit->size += d_pos;
+
+    string_node_append(&c_unit->option, data);
+
+#undef c_node
     return 1;
 }
 
 int new_text(SXML_CHAR *text, SAX_Data *sd)
 {
-    printf("new text found\n");
-
     struct compile_unit *c_unit = sd->user;
 
-    c_unit->active_node->text = text;
+    xml_node_text(c_unit->active_node, text);
 
     return 1;
 }
 
 int end_doc(SAX_Data *sd)
 {
-    printf("end document\n");
     return 1;
 }
 
 int on_error(ParseError error_num, int line_number, SAX_Data* sd)
 {
-    printf("error!\n");
+    printf("error parsing file\n");
     return 1;
 }
 
@@ -167,8 +330,29 @@ int all_event(XMLEvent event, const XMLNode* node, SXML_CHAR* text, const int n,
 
 // ------ Callbacks ------
 
-void parse_file(struct compile_unit *c_unit, char *path, char *pre_str)
+void parse_file(struct compile_unit *c_unit, char *path)
 {
+    //append pre str
+    char *needle = strrchr(path, '/');
+    if(needle)
+    {
+        int len = needle - path;
+        if(c_unit->pre_str)
+        {
+            int len_p = strlen(c_unit->pre_str);
+            c_unit->pre_str = realloc(c_unit->pre_str, strlen(c_unit->pre_str + len + 1));
+            memcpy(c_unit->pre_str + len_p, path, len);
+            c_unit->pre_str[len_p + len] = 0;
+        }
+        else
+        {
+            c_unit->pre_str = malloc(len + 1);
+            memcpy(c_unit->pre_str, path, len);
+            c_unit->pre_str[len] = 0;
+        }
+    }
+    //---- 
+    
     XMLDoc doc;
     XMLDoc_init(&doc);
 
@@ -182,6 +366,8 @@ void parse_file(struct compile_unit *c_unit, char *path, char *pre_str)
         .all_event=&all_event
     };
 
+    printf("parsing file path[%s]\n", path);
+
     XMLDoc_parse_file_SAX(path, &sax, c_unit);
 }
 
@@ -193,17 +379,18 @@ void fill_str(char *str)
 
 // ----- COMPILE_UNIT -----
 
-void compile_unit_init(struct compile_unit *c_unit, char *target)
+void compile_unit_init(struct compile_unit *c_unit)
 {
-    c_unit->target = target;
-
     c_unit->option = 0;
 
     c_unit->compiler = 0;
 
     c_unit->size = 4;
 
+    c_unit->pre_str = 0;
+
     c_unit->active_node = malloc(sizeof(struct xml_node));
+    xml_node_init(c_unit->active_node, 0);
 }
 
 void free_string_node(struct string_node *node)
@@ -225,6 +412,13 @@ void compile_unit_delete(struct compile_unit *c_unit)
     if(c_unit->option)
         free_string_node(c_unit->option);
 
+    if(c_unit->compiler)
+        free(c_unit->compiler);
+
+    if(c_unit->pre_str)
+        free(c_unit->pre_str);
+
+    xml_node_delete(c_unit->active_node);
     free(c_unit->active_node);
 }
 
@@ -240,21 +434,14 @@ void compile_unit_print(struct compile_unit *c_unit)
 char *get_compile_str(struct compile_unit *c_unit)
 {
     char *res = 0;
-    res = malloc(c_unit->size + 4);
+    res = malloc(c_unit->size);
+    char *start = res;
 
-    for(int i = 0; i < c_unit->size + 4; i++)
+    for(int i = 0; i < c_unit->size; i++)
         res[i] = 0;
 
-    if(!c_unit->compiler)
-    {
-        strcpy(res, "gcc -o ");
-        res += 7;
-    }
-    else
-    {
-        strcpy(res, c_unit->compiler);
-        res += strlen(c_unit->compiler) + 1;
-    }
+    strcpy(res, c_unit->compiler);
+    res += strlen(c_unit->compiler);
 
     struct string_node *node;
 
@@ -277,8 +464,7 @@ char *get_compile_str(struct compile_unit *c_unit)
 
     *res = 0;
 
-    res -= c_unit->size + 4;
-    return res;
+    return start;
 }
 
 
