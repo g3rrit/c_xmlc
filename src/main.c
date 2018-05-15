@@ -2,37 +2,10 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "yxml.h"
+#include "sxmlc.h"
 
 #define BUFSIZE 8192
 #define STR_S 256
-
-// ----- ATTRIBUTE -----
-
-#define MAX_ATTRIBUTES 10
-
-struct attribute
-{
-    char *elem;
-    char *attr[MAX_ATTRIBUTES];
-    char *value[MAX_ATTRIBUTES];
-    int att_size;
-
-    char *data;
-};
-
-void attribute_init(struct attribute *this);
-
-void attribute_elem(struct attribute *this, char *elem);
-
-void attribute_add(struct attribute *this, char *attr, char *value);
-
-void attribute_data(struct attribute *this, char *data);
-
-void attribute_delete(struct attribute *this);
-
-
-// ----- ATTRIBUTE -----
 
 struct string_node
 {
@@ -44,16 +17,40 @@ void string_node_append(struct string_node **entry, char *data);
 
 void string_node_print(struct string_node *entry);
 
+// ----- XML NODE ------
+
+struct xml_node
+{
+    XMLNode *node;
+    char *text;
+};
+
+void print_xml_node(struct xml_node *node)
+{
+    printf("node ->\ntag: %s\n", node->node->tag);
+
+    printf("text: %s\n", node->text);
+
+    printf("%i attributes\n", node->node->n_attributes);
+
+    for(int i = 0; i < node->node->n_attributes; i++)
+    {
+        printf("att[%i] name: %s value: %s\n", i, node->node->attributes[i].name, node->node->attributes[i].value);
+    }
+}
+// ----- XML NODE ------
+
 // ----- COMPILE_UNIT -----
 struct compile_unit
 {
     struct string_node *option;
 
     char *compiler;
-
     char *target;
-
     int size;
+
+    //the active text inside a node
+    struct xml_node *active_node;
 };
 
 void compile_unit_init(struct compile_unit *c_unit, char *target);
@@ -69,10 +66,6 @@ char *get_compile_str(struct compile_unit *c_unit);
 void parse_file(struct compile_unit *c_unit, char *path, char *pre_str);
 
 void fill_str(char *str);
-
-void print_yxml_error(yxml_ret_t r);
-
-void handle_yxml_output(struct compile_unit *c_unit, char *attr, char *elem, char *value);
 
 int main(int argc, char *argv[])
 {
@@ -113,117 +106,83 @@ cleanup:
     return 0;
 }
 
+// ------ Callbacks ------
+
+int start_doc(SAX_Data *sd)
+{
+    printf("starting doc\n");
+    return 1;
+}
+
+int start_node(const XMLNode *node, SAX_Data *sd)
+{
+    printf("starting nodes\n");
+
+    struct compile_unit *c_unit = sd->user;
+    
+    c_unit->active_node->node = node;
+
+    return 1;
+}
+
+int end_node(const XMLNode* node, SAX_Data* sd)
+{
+    printf("end node\n");
+
+    struct compile_unit *c_unit = sd->user;
+
+    print_xml_node(c_unit->active_node);
+
+    return 1;
+}
+
+int new_text(SXML_CHAR *text, SAX_Data *sd)
+{
+    printf("new text found\n");
+
+    struct compile_unit *c_unit = sd->user;
+
+    c_unit->active_node->text = text;
+
+    return 1;
+}
+
+int end_doc(SAX_Data *sd)
+{
+    printf("end document\n");
+    return 1;
+}
+
+int on_error(ParseError error_num, int line_number, SAX_Data* sd)
+{
+    printf("error!\n");
+    return 1;
+}
+
+
+int all_event(XMLEvent event, const XMLNode* node, SXML_CHAR* text, const int n, SAX_Data* sd)
+{
+    return 1;
+}
+
+// ------ Callbacks ------
+
 void parse_file(struct compile_unit *c_unit, char *path, char *pre_str)
 {
-    //char *xmldata = 0;
+    XMLDoc doc;
+    XMLDoc_init(&doc);
 
-    void *buffer = 0;
+    SAX_Callbacks sax = { 
+        .start_doc=&start_doc, 
+        .start_node=&start_node, 
+        .end_node=&end_node,
+        .new_text=&new_text, 
+        .end_doc=&end_doc, 
+        .on_error=&on_error,
+        .all_event=&all_event
+    };
 
-    char *value = 0;
-
-    FILE *file = fopen(path, "rb");
-    if(!file) 
-    {
-        printf("error reading file: %s\n", path); 
-        goto cleanup;
-    }
-
-    printf("parsing file: %s\n", path);
-
-    //parse xml
-    yxml_t xml; 
-    buffer = malloc(BUFSIZE);
-    yxml_init(&xml, buffer, BUFSIZE);
-
-    value = malloc(STR_S);
-    int valpos = 0;
-
-    char curr_c = fgetc(file);
-
-    struct attribute attr;
-    attribute_init(&attr);
-
-    char data_buffer[1024];
-
-    while(!feof(file))
-    {
-        yxml_ret_t r = yxml_parse(&xml, curr_c);
-        if(r < 0)
-        {
-            printf("error parsing file:\n");
-            printf("----> file: %s - line: %i - byte: %i - byte offset %i\n", path, xml.line, xml.byte, xml.total);
-            print_yxml_error(r);
-            goto cleanup;
-        }
-
-        switch(r)
-        {
-            case YXML_ATTRSTART:
-                fill_str(value);
-                valpos = 0;
-                break;
-        
-            case YXML_ATTRVAL:
-                value[valpos] = *xml.data;
-                valpos++;
-                break;
-
-            case YXML_ATTREND:
-                if(pre_str)
-                {
-                    memcpy(value + strlen(pre_str) + 1, value, strlen(value));
-                    value[strlen(pre_str)] = '/';
-                    memcpy(value, pre_str, strlen(pre_str));
-                }
-                printf("pi is: %s\n", xml.pi);
-
-                /*for(int i = 0; i < 20; i++)
-                    printf("nextc: %c\n", fgetc(file));
-                    */
-
-                handle_yxml_output(c_unit, xml.attr, xml.elem, value);
-                break;
-        }
-
-        //-----
-        int seek_size = 1;
-        for(char ch = fgetc(file); ch == ' '; ch = fgetc(file))
-                seek_size++;
-
-        if(ch == '>')
-        {
-            //handle attribute
-            memset(data_buffer, 0, 1024);
-            for(int i = 0; i < 1024; i++)
-            {
-                ch = fgetc(file);
-                seek_size++;
-                if(ch == '<')
-                    break;
-
-                data_buffer[i] = ch;
-            }
-             
-
-        }
-
-        fseek(file, -seek_size, SEEK_CUR);
-        //-----
-
-        curr_c = fgetc(file);
-    }
-    printf("end of file\n");
-    //parse xml
-    
-cleanup:
-    //if(xmldata)
-    //    free(xmldata);
-    if(file)
-        fclose(file);
-    if(buffer)
-        free(buffer);
-    if(value)
-        free(value);
+    XMLDoc_parse_file_SAX(path, &sax, c_unit);
 }
 
 void fill_str(char *str)
@@ -231,99 +190,6 @@ void fill_str(char *str)
     for(int i = 0; i < STR_S; i++)
         str[i] = 0;
 }
-
-void print_yxml_error(yxml_ret_t r)
-{
-    printf("--------> ");
-    switch(r)
-    {
-    case YXML_EREF:
-        printf("invalid character er entity reference. e.g. &whatever");
-        break;
-    case YXML_ECLOSE:
-        printf("close tag does not match open tag");
-        break;
-    case YXML_ESTACK:
-        printf("stack overflow\n");
-        break;
-    case YXML_ESYN:
-        printf("miscollaneous syntax error");
-        break;
-    }    
-    printf("\n");
-}
-
-void handle_yxml_output(struct compile_unit *c_unit, char *attr, char *elem, char *value)
-{
-    printf("found element: %s - attr: %s - value: %s\n", elem, attr, value);
-
-}
-
-
-// ----- ATTRIBUTE -----
-
-void attribute_init(struct attribute *this)
-{
-    this->elem = 0;
-    for(int i = 0; i < MAX_ATTRIBUTES; i++)
-        this->attr[i] = 0;
-    for(int i = 0; i < MAX_ATTRIBUTES; i++)
-        this->value[i] = 0;
-
-    this->att_size = 0;
-
-    this->data = 0;
-}
-
-void attribute_elem(struct attribute *this, char *elem)
-{
-    if(this->elem)
-        free(this->elem);
-
-    this->elem = malloc(strlen(elem) + 1);
-    strcpy(this->elem, elem);
-    this->elem[strlen(elem)] = 0;
-}
-
-void attribute_add(struct attribute *this, char *attr, char *value)
-{
-    this->attr[this->att_size] = malloc(strlen(attr) + 1);
-    strcpy(this->attr[this->att_size], attr);
-    this->attr[this->att_size][strlen(attr)] = 0;
-
-    this->value[this->att_size] = malloc(strlen(value) + 1);
-    strcpy(this->value[this->att_size], value);
-    this->value[this->att_size][strlen(value)] = 0;
-
-    this->att_size++;
-}
-
-void attribute_data(struct attribute *this, char *data)
-{
-    this->data = malloc(strlen(data));
-    strcpy(this->data, data);
-    this->data[strlen(data)] = 0;
-}
-
-void attribute_delete(struct attribute *this)
-{
-    for(int i = 0; i < this->attr_size; i++)
-        if(this->attr[i])
-            free(this->attr[i]);
-
-    for(int i = 0; i < this->attr_size; i++)
-        if(this->value[i])
-            free(this->value[i]);
-
-    if(this->elem)
-        free(this->elem);
-
-    if(this->data)
-        free(this->data);
-}
-
-// ----- ATTRIBUTE -----
-
 
 // ----- COMPILE_UNIT -----
 
@@ -336,6 +202,8 @@ void compile_unit_init(struct compile_unit *c_unit, char *target)
     c_unit->compiler = 0;
 
     c_unit->size = 4;
+
+    c_unit->active_node = malloc(sizeof(struct xml_node));
 }
 
 void free_string_node(struct string_node *node)
@@ -356,6 +224,8 @@ void compile_unit_delete(struct compile_unit *c_unit)
 {
     if(c_unit->option)
         free_string_node(c_unit->option);
+
+    free(c_unit->active_node);
 }
 
 void compile_unit_print(struct compile_unit *c_unit)

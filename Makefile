@@ -2,7 +2,7 @@ CC := gcc
 
 INC_DIRS := -I lib/sxml
 
-SRC_F := lib/sxml/sxml.c
+SRC_F := lib/sxml/sxmlc.c
 
 SRC_F += src/main.c
 SRC_F += lib/sxml/sxmlsearch.c
