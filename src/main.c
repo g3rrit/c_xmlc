@@ -230,12 +230,13 @@ int end_node(const XMLNode* node, SAX_Data* sd)
     else if(strcmp(node->tag, "option"))
         return 1;
 
-
     //handle node
     char *prefix = 0;
     int include = 0;
 
-    char *data = malloc(1);
+#define DATA_SIZE 2048
+    char data[DATA_SIZE];
+    memset(data, 0, DATA_SIZE);
 
     for(int i = 0; i < c_node->att_count; i++)
     {
@@ -261,7 +262,7 @@ int end_node(const XMLNode* node, SAX_Data* sd)
     int d_pos = 0;
     int t_pos = 0;
 
-    char *curr_c = 1;
+    char *curr_c = 0;
     char *next_c = 0;
     curr_c = c_node->text;
     while(1)
@@ -276,7 +277,9 @@ int end_node(const XMLNode* node, SAX_Data* sd)
 
         int s_len = next_c - curr_c;
 
-        data = realloc(data, next_c - curr_c + p_len + 3);
+        //printf("next size: %i\n", next_c - curr_c + p_len + 5);
+
+        //data = realloc(data, next_c - curr_c + p_len + 5);
 
         data[d_pos] = ' ';
         d_pos++;
