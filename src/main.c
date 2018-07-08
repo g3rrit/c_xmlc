@@ -253,6 +253,8 @@ int end_node(const XMLNode* node, SAX_Data* sd)
             *c = ' ';
         else if(*c == '\t')
             *c = ' ';
+        else if(*c == '\r')
+            *c = ' ';
 
 
     int p_len = 0;
