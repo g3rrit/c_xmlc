@@ -147,7 +147,10 @@ int main(int argc, char *argv[])
     struct compile_unit c_unit;
     compile_unit_init(&c_unit);
 
-    parse_file(&c_unit, "build.xml");
+    if(argc < 2)
+        parse_file(&c_unit, "build.xml");
+    else
+        parse_file(&c_unit, argv[1]);
 
     compile_unit_print(&c_unit);
 
